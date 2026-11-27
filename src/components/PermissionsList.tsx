@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Input, List, Typography, Checkbox, Button, Badge } from 'antd';
 import { SearchOutlined, SwapOutlined, ClearOutlined } from '@ant-design/icons';
 import type { Permission } from '../hooks/usePermissions';
@@ -30,6 +30,13 @@ export const PermissionsList = ({
     onClearComparison
 }: PermissionsListProps) => {
     const [searchTerm, setSearchTerm] = useState('');
+    const listRef = useRef<HTMLDivElement>(null);
+
+    // Bring the selected permission into view, e.g. after opening a direct link
+    useEffect(() => {
+        if (isLoading || !selectedPermission) return;
+        listRef.current?.querySelector(`[data-permission="${CSS.escape(selectedPermission)}"]`)?.scrollIntoView({ block: 'nearest' });
+    }, [isLoading, selectedPermission]);
 
     // Pre-compute search index for fast lookups
     const searchIndex = useMemo(() => {
@@ -166,7 +173,7 @@ export const PermissionsList = ({
                 </div>
             </div>
 
-            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            <div ref={listRef} style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                 <List
                     loading={isLoading}
                     dataSource={filteredPermissions}
@@ -174,6 +181,7 @@ export const PermissionsList = ({
                     pagination={false}
                     renderItem={(permission) => (
                         <List.Item
+                            data-permission={permission.name}
                             style={{
                                 padding: '12px 16px',
                                 cursor: 'pointer',

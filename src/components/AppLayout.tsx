@@ -1,5 +1,6 @@
-import { Layout, Spin, Alert } from "antd";
-import { useState } from "react";
+import { Layout, Spin, Alert, Empty } from "antd";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { TitleBar } from "./TitleBar";
 import { PermissionsList } from "./PermissionsList";
 import { PermissionDetails } from "./PermissionDetails";
@@ -7,16 +8,25 @@ import { PermissionComparison } from "./PermissionComparison";
 import { usePermissions } from "../hooks/usePermissions";
 
 const { Header, Sider, Content } = Layout;
+const APP_TITLE = "Graph permission comparer";
 
 export const AppLayout = () => {
   const { permissions, descriptions, applicationDescriptions, isLoading, error } = usePermissions();
-  const [selectedPermission, setSelectedPermission] = useState<string | null>(null);
+  // The selected permission is the /permissions/$name route param, so links and refreshes keep it
+  const { name: selectedPermission = null } = useParams({ strict: false });
+  const navigate = useNavigate();
+  const setSelectedPermission = (name: string | null) =>
+    name ? navigate({ to: "/permissions/$name", params: { name } }) : navigate({ to: "/" });
   const [comparisonMode, setComparisonMode] = useState(false);
   const [selectedForComparison, setSelectedForComparison] = useState<string[]>([]);
 
   const selectedPermissionData = selectedPermission 
     ? permissions.find(p => p.name === selectedPermission) || null
     : null;
+
+  useEffect(() => {
+    document.title = selectedPermission ? `${selectedPermission} · ${APP_TITLE}` : APP_TITLE;
+  }, [selectedPermission]);
 
   const selectedPermissionsData = selectedForComparison
     .map(name => permissions.find(p => p.name === name))
@@ -107,6 +117,13 @@ export const AppLayout = () => {
               descriptions={descriptions}
               onRemovePermission={handleRemoveFromComparison}
             />
+          ) : selectedPermission && !selectedPermissionData ? (
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+              <Empty
+                description={`Permission "${selectedPermission}" was not found`}
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            </div>
           ) : (
             <PermissionDetails 
               permission={selectedPermissionData}
