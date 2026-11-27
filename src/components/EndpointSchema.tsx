@@ -1,8 +1,8 @@
-import { Card, Empty, Spin, Tag, Typography } from 'antd';
+import { Card, Empty, Segmented, Spin, Tag, Typography } from 'antd';
 import { CloseOutlined, LinkOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { JsonView } from './JsonView';
-import { collectSchemaRefs, useSchema } from '../hooks/useOpenApi';
+import { collectSchemaRefs, useExample, useSchema } from '../hooks/useOpenApi';
 import type { BodyInfo, EndpointInfo, GraphVersion } from '../hooks/useOpenApi';
 
 const { Text } = Typography;
@@ -24,7 +24,49 @@ const ModelTags = ({ schema, onOpen }: { schema: unknown; onOpen: (name: string)
     );
 };
 
-const BodySection = ({ title, body, note, onOpen }: { title: string; body: BodyInfo; note?: string; onOpen: (name: string) => void }) => (
+type BodyView = 'example' | 'schema';
+
+const ExampleView = ({ version, schema }: { version: GraphVersion; schema: unknown }) => {
+    const { example, doc, isLoading } = useExample(version, schema);
+    return isLoading ? <Spin size='small' /> : <JsonView value={example} doc={doc} />;
+};
+
+/** The resulting body by default, with a switch to the schema that describes it. */
+const SchemaViewer = ({ version, schema, onOpen }: { version: GraphVersion; schema: unknown; onOpen: (name: string) => void }) => {
+    const [view, setView] = useState<BodyView>('example');
+    return (
+        <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <Segmented<BodyView>
+                    size='small'
+                    value={view}
+                    onChange={setView}
+                    options={[
+                        { label: 'Body', value: 'example' },
+                        { label: 'Schema', value: 'schema' }
+                    ]}
+                />
+                {view === 'example' && (
+                    <Text type='secondary' style={{ fontSize: '12px' }}>
+                        Example generated from the schema, with placeholder values. Hover a field for its description.
+                    </Text>
+                )}
+            </div>
+            <ModelTags schema={schema} onOpen={onOpen} />
+            {view === 'example' ? <ExampleView version={version} schema={schema} /> : <JsonView value={schema} onRefClick={onOpen} />}
+        </>
+    );
+};
+
+interface BodySectionProps {
+    title: string;
+    version: GraphVersion;
+    body: BodyInfo;
+    note?: string;
+    onOpen: (name: string) => void;
+}
+
+const BodySection = ({ title, version, body, note, onOpen }: BodySectionProps) => (
     <div style={{ marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
             <Text strong>{title}</Text>
@@ -32,10 +74,7 @@ const BodySection = ({ title, body, note, onOpen }: { title: string; body: BodyI
             {note && <Text type='secondary'>{note}</Text>}
         </div>
         {body.schema ? (
-            <>
-                <ModelTags schema={body.schema} onOpen={onOpen} />
-                <JsonView value={body.schema} onRefClick={onOpen} />
-            </>
+            <SchemaViewer version={version} schema={body.schema} onOpen={onOpen} />
         ) : (
             <Text type='secondary'>{body.contentType ? 'No schema described for this content type.' : 'No body.'}</Text>
         )}
@@ -59,10 +98,7 @@ const ModelCard = ({ version, name, onOpen, onClose }: { version: GraphVersion; 
             {isLoading ? (
                 <Spin size='small' />
             ) : schema ? (
-                <>
-                    <ModelTags schema={schema} onOpen={onOpen} />
-                    <JsonView value={schema} onRefClick={onOpen} />
-                </>
+                <SchemaViewer version={version} schema={schema} onOpen={onOpen} />
             ) : (
                 <Empty description='Schema not found' image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
@@ -98,9 +134,9 @@ export const EndpointSchema = ({ info }: { info: EndpointInfo }) => {
                 )}
             </div>
 
-            {request && <BodySection title='Request body' body={request} onOpen={openModel} />}
+            {request && <BodySection title='Request body' version={info.version} body={request} onOpen={openModel} />}
             {response ? (
-                <BodySection title='Response body' body={response} note={responseNote} onOpen={openModel} />
+                <BodySection title='Response body' version={info.version} body={response} note={responseNote} onOpen={openModel} />
             ) : (
                 <Text type='secondary'>No response described.</Text>
             )}

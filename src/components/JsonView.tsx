@@ -1,5 +1,7 @@
+import { Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 import { schemaNameFromRef } from '../hooks/useOpenApi';
+import type { FieldDoc } from '../hooks/useOpenApi';
 
 const COLORS = {
     key: '#9CDCFE',
@@ -10,63 +12,119 @@ const COLORS = {
     link: '#50AF5BFF'
 };
 
-// A string (optionally followed by ":", which makes it a key), a literal, or a number.
-const TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+const INDENT = '  ';
 
 interface JsonViewProps {
     value: unknown;
+    /** Documentation matching the shape of `value`; documented fields show it on hover. */
+    doc?: FieldDoc;
     /** Called with the model name when a "$ref" to a model schema is clicked. */
     onRefClick?: (schemaName: string) => void;
     maxHeight?: number;
 }
 
-/** Pretty-printed JSON with syntax highlighting. */
-export const JsonView = ({ value, onRefClick, maxHeight = 420 }: JsonViewProps) => {
-    const text = JSON.stringify(value, null, 2) ?? 'undefined';
-    const nodes: ReactNode[] = [];
-    let last = 0;
+const FieldTooltip = ({ name, doc }: { name: string; doc: FieldDoc }) => (
+    <div style={{ fontSize: '12px', lineHeight: 1.5 }}>
+        <div>
+            <strong>{name}</strong>
+            {doc.type && <span style={{ color: COLORS.key }}> {doc.type}</span>}
+            {doc.nullable && <span style={{ color: COLORS.punctuation }}> · nullable</span>}
+        </div>
+        {doc.description && <div style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{doc.description}</div>}
+        {doc.enum && (
+            <div style={{ marginTop: '4px' }}>
+                <span style={{ color: COLORS.punctuation }}>One of: </span>
+                {doc.enum.map(String).join(', ')}
+            </div>
+        )}
+    </div>
+);
 
-    for (const match of text.matchAll(TOKEN)) {
-        const index = match.index;
-        if (index > last) nodes.push(text.slice(last, index));
-        const [token, quoted, colon, literal] = match;
+const hasDocs = (doc: FieldDoc | undefined): doc is FieldDoc => Boolean(doc && (doc.description || doc.type || doc.enum));
 
-        if (quoted && colon) {
-            nodes.push(
-                <span key={index} style={{ color: COLORS.key }}>
-                    {quoted}
-                </span>,
-                colon
-            );
-        } else if (quoted) {
-            const schemaName = onRefClick ? schemaNameFromRef(JSON.parse(quoted)) : null;
-            nodes.push(
-                schemaName ? (
-                    <a
-                        key={index}
-                        role='button'
-                        title={`Show model ${schemaName}`}
-                        onClick={() => onRefClick?.(schemaName)}
-                        style={{ color: COLORS.link, textDecoration: 'underline', cursor: 'pointer' }}
-                    >
-                        {quoted}
-                    </a>
-                ) : (
-                    <span key={index} style={{ color: COLORS.string }}>
-                        {quoted}
-                    </span>
-                )
-            );
-        } else {
-            nodes.push(
-                <span key={index} style={{ color: literal ? COLORS.literal : COLORS.number }}>
-                    {token}
+/** Pretty-printed JSON with syntax highlighting and optional per-field documentation. */
+export const JsonView = ({ value, doc, onRefClick, maxHeight = 420 }: JsonViewProps) => {
+    const renderKey = (name: string, path: string, fieldDoc: FieldDoc | undefined) => {
+        const label = JSON.stringify(name);
+        if (!hasDocs(fieldDoc)) return <span style={{ color: COLORS.key }}>{label}</span>;
+        return (
+            <Tooltip key={path} title={<FieldTooltip name={name} doc={fieldDoc} />} placement='topLeft' mouseEnterDelay={0.15} styles={{ root: { maxWidth: 480 } }}>
+                <span
+                    style={{
+                        color: COLORS.key,
+                        cursor: 'help',
+                        // Only fields that carry an actual description are marked
+                        borderBottom: fieldDoc.description ? `1px dotted ${COLORS.punctuation}` : undefined
+                    }}
+                >
+                    {label}
                 </span>
+            </Tooltip>
+        );
+    };
+
+    const render = (node: unknown, indent: string, path: string, nodeDoc: FieldDoc | undefined, parentKey?: string): ReactNode => {
+        if (node === null || node === undefined || typeof node === 'boolean') {
+            return <span style={{ color: COLORS.literal }}>{String(node ?? null)}</span>;
+        }
+        if (typeof node === 'number') return <span style={{ color: COLORS.number }}>{node}</span>;
+        if (typeof node === 'string') {
+            const text = JSON.stringify(node);
+            const schemaName = onRefClick && parentKey === '$ref' ? schemaNameFromRef(node) : null;
+            return schemaName ? (
+                <a
+                    role='button'
+                    title={`Show model ${schemaName}`}
+                    onClick={() => onRefClick?.(schemaName)}
+                    style={{ color: COLORS.link, textDecoration: 'underline', cursor: 'pointer' }}
+                >
+                    {text}
+                </a>
+            ) : (
+                <span style={{ color: COLORS.string }}>{text}</span>
             );
         }
-        last = index + token.length;
-    }
-    if (last < text.length) nodes.push(text.slice(last));
+
+        const inner = indent + INDENT;
+        if (Array.isArray(node)) {
+            if (node.length === 0) return '[]';
+            return (
+                <>
+                    {'[\n'}
+                    {node.map((item, i) => (
+                        <span key={i}>
+                            {inner}
+                            {render(item, inner, `${path}/${i}`, nodeDoc?.items)}
+                            {i < node.length - 1 ? ',\n' : '\n'}
+                        </span>
+                    ))}
+                    {indent + ']'}
+                </>
+            );
+        }
+
+        const entries = Object.entries(node as Record<string, unknown>).filter(([, v]) => v !== undefined);
+        if (entries.length === 0) return '{}';
+        return (
+            <>
+                {'{\n'}
+                {entries.map(([name, child], i) => {
+                    const childPath = `${path}/${name}`;
+                    const childDoc = nodeDoc?.fields?.[name];
+                    return (
+                        <span key={name}>
+                            {inner}
+                            {renderKey(name, childPath, childDoc)}
+                            {': '}
+                            {render(child, inner, childPath, childDoc, name)}
+                            {i < entries.length - 1 ? ',\n' : '\n'}
+                        </span>
+                    );
+                })}
+                {indent + '}'}
+            </>
+        );
+    };
 
     return (
         <pre
@@ -84,7 +142,7 @@ export const JsonView = ({ value, onRefClick, maxHeight = 420 }: JsonViewProps) 
                 borderRadius: '6px'
             }}
         >
-            <code>{nodes}</code>
+            <code>{render(value, '', '', doc)}</code>
         </pre>
     );
 };
