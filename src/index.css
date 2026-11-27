@@ -14,7 +14,7 @@
 }
 @font-face {
     font-family: Doctor Glitch;
-    src: url("font/Doctor Glitch.otf") format("opentype");
+    src: url("/font/Doctor Glitch.otf") format("opentype");
 }
 
 body {
