@@ -1,7 +1,10 @@
 import { Card, Typography, Descriptions, Tag, Table, Collapse, Empty, Tabs, Select } from 'antd';
-import { ApiOutlined, LockOutlined, UserOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { ApiOutlined, LockOutlined, UserOutlined, AppstoreOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import type { Permission, PermissionDescription } from '../hooks/usePermissions';
+import { useEndpointLookup } from '../hooks/useOpenApi';
+import type { EndpointLookup } from '../hooks/useOpenApi';
+import { EndpointSchema } from './EndpointSchema';
 
 const { Title, Text, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -17,13 +20,15 @@ interface ApiEndpoint {
 interface PermissionDetailsProps {
     permission: Permission | null;
     descriptions: PermissionDescription[];
+    applicationDescriptions: PermissionDescription[];
 }
 
 // Component for individual endpoint tab with method filtering
-const EndpointTable = ({ endpoints, apiColumns }: { 
+const EndpointTable = ({ endpoints, apiColumns, lookup }: { 
     endpoints: ApiEndpoint[], 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    apiColumns: any[]
+    apiColumns: any[],
+    lookup: EndpointLookup
 }) => {
     const [methodFilter, setMethodFilter] = useState<string | undefined>(undefined);
     
@@ -64,12 +69,22 @@ const EndpointTable = ({ endpoints, apiColumns }: {
                 pagination={false}
                 scroll={{ x: true }}
                 size="small"
+                expandable={{
+                    // Only endpoints found in the Graph OpenAPI description can be expanded
+                    rowExpandable: (endpoint) => Boolean(lookup(endpoint.path, endpoint.method)),
+                    expandedRowRender: (endpoint) => {
+                        const info = lookup(endpoint.path, endpoint.method);
+                        return info ? <EndpointSchema info={info} /> : null;
+                    }
+                }}
             />
         </div>
     );
 };
 
-export const PermissionDetails = ({ permission, descriptions }: PermissionDetailsProps) => {
+export const PermissionDetails = ({ permission, descriptions, applicationDescriptions }: PermissionDetailsProps) => {
+    const lookup = useEndpointLookup(permission);
+
     if (!permission) {
         return (
             <div
@@ -150,6 +165,11 @@ export const PermissionDetails = ({ permission, descriptions }: PermissionDetail
 
     // Find matching description from the descriptions array
     const matchingDescription = descriptions.find((desc) => desc.value === permission.name);
+    const matchingAppRole = applicationDescriptions.find((desc) => desc.value === permission.name);
+
+    // Delegated schemes share the OAuth2 scope id, the Application scheme has its own app role id
+    const getSchemeId = (schemeType: string) =>
+        schemeType === 'Application' ? { label: 'App Role ID', id: matchingAppRole?.id } : { label: 'Scope ID', id: matchingDescription?.id };
 
     // Prepare API endpoints data for table
 
@@ -200,6 +220,24 @@ export const PermissionDetails = ({ permission, descriptions }: PermissionDetail
                     {path}
                 </Text>
             )
+        },
+        {
+            title: 'Body',
+            key: 'body',
+            width: 110,
+            render: (_: unknown, endpoint: ApiEndpoint) => {
+                const info = lookup(endpoint.path, endpoint.method);
+                if (!info) return null;
+                const parts = [info.request?.schema && 'request', info.response?.schema && 'response'].filter(Boolean);
+                return (
+                    <span title={parts.length ? `Schema available for: ${parts.join(', ')}. Expand the row to view.` : 'No body schema'}>
+                        <FileTextOutlined style={{ color: parts.length ? '#50AF5BFF' : '#555555', marginRight: '6px' }} />
+                        <Tag color={info.version === 'beta' ? 'orange' : 'blue'} style={{ margin: 0 }}>
+                            {info.version}
+                        </Tag>
+                    </span>
+                );
+            }
         },
         {
             title: 'Schemes',
@@ -274,6 +312,7 @@ export const PermissionDetails = ({ permission, descriptions }: PermissionDetail
                 <Collapse ghost>
                     {Object.entries(permission.schemes).map(([schemeType, scheme]) => {
                         if (!scheme) return null;
+                        const schemeId = getSchemeId(schemeType);
 
                         return (
                             <Panel
@@ -297,6 +336,15 @@ export const PermissionDetails = ({ permission, descriptions }: PermissionDetail
                                 }
                             >
                                 <Descriptions column={1} size='small'>
+                                    <Descriptions.Item label={schemeId.label}>
+                                        {schemeId.id ? (
+                                            <Text code copyable>
+                                                {schemeId.id}
+                                            </Text>
+                                        ) : (
+                                            <Text type='secondary'>N/A</Text>
+                                        )}
+                                    </Descriptions.Item>
                                     <Descriptions.Item label='Admin Display Name'>
                                         <Text strong>{scheme.adminDisplayName}</Text>
                                     </Descriptions.Item>
@@ -339,7 +387,7 @@ export const PermissionDetails = ({ permission, descriptions }: PermissionDetail
                                         <Tag>{apiEndpoints.length}</Tag>
                                     </span>
                                 ),
-                                children: <EndpointTable endpoints={apiEndpoints} apiColumns={apiColumns} />
+                                children: <EndpointTable endpoints={apiEndpoints} apiColumns={apiColumns} lookup={lookup} />
                             },
                             // Then add grouped tabs
                             ...Object.entries(groupedEndpoints)
@@ -352,7 +400,7 @@ export const PermissionDetails = ({ permission, descriptions }: PermissionDetail
                                             <Tag>{endpoints.length}</Tag>
                                         </span>
                                     ),
-                                    children: <EndpointTable endpoints={endpoints} apiColumns={apiColumns} />
+                                    children: <EndpointTable endpoints={endpoints} apiColumns={apiColumns} lookup={lookup} />
                                 }))
                         ]}
                     />
@@ -365,8 +413,11 @@ export const PermissionDetails = ({ permission, descriptions }: PermissionDetail
                     <Descriptions.Item label='Authorization Type'>
                         <Tag>{permission.authorizationType}</Tag>
                     </Descriptions.Item>
-                    <Descriptions.Item label='Permission ID'>
+                    <Descriptions.Item label='Scope ID (delegated)'>
                         <Text code>{matchingDescription?.id || 'N/A'}</Text>
+                    </Descriptions.Item>
+                    <Descriptions.Item label='App Role ID (application)'>
+                        <Text code>{matchingAppRole?.id || 'N/A'}</Text>
                     </Descriptions.Item>
                     <Descriptions.Item label='Path Sets'>
                         <Tag>{permission.pathSets.length}</Tag>

@@ -24,6 +24,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Body schemas from the Graph OpenAPI descriptions; generated, not committed
+      - run: npm run build:schemas
       - run: npm run build
       # SPA fallback so deep links are served by the router
       - run: cp dist/index.html dist/404.html

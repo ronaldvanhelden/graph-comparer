@@ -9,7 +9,7 @@ import { usePermissions } from "../hooks/usePermissions";
 const { Header, Sider, Content } = Layout;
 
 export const AppLayout = () => {
-  const { permissions, descriptions, isLoading, error } = usePermissions();
+  const { permissions, descriptions, applicationDescriptions, isLoading, error } = usePermissions();
   const [selectedPermission, setSelectedPermission] = useState<string | null>(null);
   const [comparisonMode, setComparisonMode] = useState(false);
   const [selectedForComparison, setSelectedForComparison] = useState<string[]>([]);
@@ -111,6 +111,7 @@ export const AppLayout = () => {
             <PermissionDetails 
               permission={selectedPermissionData}
               descriptions={descriptions}
+              applicationDescriptions={applicationDescriptions}
             />
           )}
         </Content>

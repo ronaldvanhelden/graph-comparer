@@ -40,6 +40,8 @@ export interface PermissionDescription {
 export interface PermissionsData {
     permissions: Permission[];
     descriptions: PermissionDescription[];
+    /** App role definitions (application permissions); `id` is the app role id. */
+    applicationDescriptions: PermissionDescription[];
     isLoading: boolean;
     error: string | null;
 }
@@ -47,6 +49,7 @@ export interface PermissionsData {
 export const usePermissions = (): PermissionsData => {
     const [permissions, setPermissions] = useState<Permission[]>([]);
     const [descriptions, setDescriptions] = useState<PermissionDescription[]>([]);
+    const [applicationDescriptions, setApplicationDescriptions] = useState<PermissionDescription[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -92,6 +95,7 @@ export const usePermissions = (): PermissionsData => {
 
                 setPermissions(transformedPermissions);
                 setDescriptions(descriptionsData.delegatedScopesList || []);
+                setApplicationDescriptions(descriptionsData.applicationScopesList || []);
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Unknown error occurred');
             } finally {
@@ -105,6 +109,7 @@ export const usePermissions = (): PermissionsData => {
     return {
         permissions,
         descriptions,
+        applicationDescriptions,
         isLoading,
         error
     };

@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` - Build for production (TypeScript compilation + Vite build)
 - `npm run lint` - Run ESLint with TypeScript-ESLint configuration
 - `npm run preview` - Preview production build locally
+- `npm run build:schemas` - Generate `public/data/openapi` (endpoint body schemas from the Graph OpenAPI descriptions; gitignored, also run by the Pages deploy workflow)
 
 ## Architecture Overview
 
